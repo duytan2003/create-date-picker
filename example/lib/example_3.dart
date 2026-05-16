@@ -1,5 +1,3 @@
-import 'dart:developer';
-
 import 'package:create_date_picker/create_date_picker.dart';
 import 'package:intl/intl.dart';
 
@@ -284,6 +282,7 @@ class _Example3State extends State<Example3>
     isInTheCurrentMonth,
     isAvailable,
     day,
+    isToday,
   ) => GestureDetector(
     onTap: selectdate,
     child: Card(

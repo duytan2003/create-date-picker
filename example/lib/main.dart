@@ -341,6 +341,7 @@ class _Example1State extends State<Example1>
     isInTheCurrentMonth,
     isAvailable,
     day,
+    isToday,
   ) => GestureDetector(
     onTap: selectdate,
     child: Card(

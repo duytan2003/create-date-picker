@@ -218,11 +218,12 @@ class CreateDatePicker extends StatefulWidget {
 
   /// Custom builder for the date cells.
   final Function(
-    Function() selectdate,
+    VoidCallback selectdate,
     bool isSelected,
     bool isInTheCurrentMonth,
     bool isAvailable,
     int day,
+    bool isToday,
   )?
   dateCellBuilder;
 
@@ -815,36 +816,82 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
     bool isSelected = false,
     bool isInTheCurrentMonth = true,
     bool isAvailable = true,
+    DateTime? date,
   }) {
+    final cellDate =
+        date ?? DateTime(_selectedDate.year, _selectedDate.month, day);
+    final now = DateTime.now();
+    final isToday =
+        cellDate.year == now.year &&
+        cellDate.month == now.month &&
+        cellDate.day == now.day;
+
     if (widget.dateCellBuilder != null) {
+      void selectDate() {
+        if (isInTheCurrentMonth) {
+          _selectDate(day);
+        }
+      }
+
       return widget.dateCellBuilder!(
-        () => isInTheCurrentMonth ? _selectDate(day) : null,
+        selectDate,
         isSelected,
         isInTheCurrentMonth,
         isAvailable,
         day,
+        isToday,
       );
     }
 
     return GestureDetector(
       onTap: isInTheCurrentMonth ? () => _selectDate(day) : null,
-      child: Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.blueAccent : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          '$day',
-          style: TextStyle(
+      child: Center(
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+
+          decoration: BoxDecoration(
             color:
-                isInTheCurrentMonth
-                    ? (isSelected
-                        ? Colors.white
-                        : isAvailable
-                        ? Colors.black
-                        : Colors.red)
-                    : Colors.grey,
+                isSelected
+                    ? Color(0xFF29A3FF)
+                    : (isToday && isInTheCurrentMonth)
+                    ? Color(0xFFC8C9CC)
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$day',
+                style: TextStyle(
+                  color:
+                      isInTheCurrentMonth
+                          ? ((isSelected || isToday)
+                              ? Colors.white
+                              : isAvailable
+                              ? Colors.black
+                              : Colors.red)
+                          : Colors.grey,
+                ),
+              ),
+              Container(
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color:
+                      !isInTheCurrentMonth
+                          ? Colors.transparent
+                          : (isSelected || isToday)
+                          ? Colors.white
+                          : isAvailable
+                          ? Colors.green
+                          : Colors.red,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -890,6 +937,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
             day,
             isInTheCurrentMonth: false,
             isAvailable: _dateIsAvailable(date),
+            date: date,
           );
         }).toList();
 
@@ -900,6 +948,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
           date.day,
           isSelected: _isSelectedDate(date),
           isAvailable: _dateIsAvailable(date),
+          date: date,
         );
       }),
     );
@@ -917,6 +966,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
           day,
           isInTheCurrentMonth: false,
           isAvailable: _dateIsAvailable(date),
+          date: date,
         );
       }).toList(),
     );
