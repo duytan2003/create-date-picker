@@ -103,6 +103,7 @@ class CreateDatePicker extends StatefulWidget {
     this.yearCellBuilder,
     this.onViewStateChanged,
     this.textStyle,
+    this.borderRadius = 4,
     this.weekdayTextStyle,
     this.onSwipeLeftSelectedDate,
     this.onSwipeRightSelectedDate,
@@ -180,6 +181,8 @@ class CreateDatePicker extends StatefulWidget {
   final TextStyle? textStyle;
 
   final TextStyle? weekdayTextStyle;
+
+  final double borderRadius;
 
   /// Custom builder for the entire picker. Here you can place all the component where ever you want, and to customize it use the builder for each component.
   final Function(
@@ -316,6 +319,9 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
     return Card(
       color: Colors.white,
       elevation: widget.elevation,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
