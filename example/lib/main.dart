@@ -32,17 +32,15 @@ class App extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
 
-      body: Padding(
-        padding: const EdgeInsets.all(60.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [Example0(), Example1(), Example2(), Example3()],
-            ),
-          ],
-        ),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Row(
+          //   crossAxisAlignment: CrossAxisAlignment.start,
+          //   children: [Example0(), Example1(), Example2(), Example3()],
+          // ),
+          Example0(),
+        ],
       ),
     );
   }

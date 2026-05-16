@@ -90,6 +90,7 @@ class CreateDatePicker extends StatefulWidget {
     this.popupMenuOffset,
     this.popupMenuPosition = PopupMenuPosition.under,
     this.builder,
+    this.padding = EdgeInsets.zero,
     this.leftArrowBuilder,
     this.rightArrowBuilder,
     this.popupSelectedDateBuilder,
@@ -162,6 +163,8 @@ class CreateDatePicker extends StatefulWidget {
 
   /// The width of the picker.
   final double? width;
+
+  final EdgeInsetsGeometry padding;
 
   // Set the default Datepicker elevation
   final double elevation;
@@ -798,7 +801,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
                         color: Colors.blueAccent,
                       )
                       : null,
-              padding: const EdgeInsets.all(12),
+              padding: widget.padding,
               child: Center(
                 child: Text(
                   day.substring(0, 2),
