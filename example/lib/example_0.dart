@@ -7,14 +7,18 @@ class Example0 extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          'Default',
-          style: TextStyle(fontSize: 16),
-        ),
+        Text('Default', style: TextStyle(fontSize: 16)),
         CreateDatePicker(
           width: 450,
           elevation: 3,
           popupMenuOffset: Offset(20, 5),
+          markedDates: [
+            DateTime.now().add(Duration(days: 2)),
+            DateTime.now().add(Duration(days: 4)),
+            DateTime.now().add(Duration(days: 6)),
+          ],
+          onSwipeLeftSelectedDate: (date) {},
+          onSwipeRightSelectedDate: (date) {},
           onSelectedDateChanged: (date) {},
         ),
       ],

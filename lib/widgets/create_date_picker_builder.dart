@@ -16,6 +16,7 @@ class CreateDatePicker extends StatefulWidget {
   /// ### Features:
   /// - Switch between date, month, and year views.
   /// - Restrict selectable dates using `minDateTime`, `maxDateTime`, and `restrictedDates`.
+  /// - Show markers for specific dates using `markedDates`.
   /// - Customize the appearance of the picker using builder functions.
   /// - Localize week and month labels using `weekLabels` and `monthLabels`.
   ///
@@ -28,6 +29,7 @@ class CreateDatePicker extends StatefulWidget {
   ///     minDateTime: DateTime(2024, 5, 1),
   ///     maxDateTime: DateTime(2029, 5, 1),
   ///     restrictedDates: restrictedDates,
+  ///     markedDates: markedDates,
   ///     weekLabels: weekLabels,
   ///     monthLabels: monthLabels,
   ///     leftArrowBuilder: _leftArrowBuilder,
@@ -41,6 +43,8 @@ class CreateDatePicker extends StatefulWidget {
   ///     yearCellBuilder: _yearCellBuilder,
   ///     onViewStateChanged: _changeViewState,
   ///     onSelectedDateChanged: _onSelectedDateChanged,
+  ///     onSwipeLeftSelectedDate: _onSwipeLeftSelectedDate,
+  ///     onSwipeRightSelectedDate: _onSwipeRightSelectedDate,
   ///     builder: _createDatePickerBuilder,
   ///  ),
   /// ```
@@ -57,6 +61,7 @@ class CreateDatePicker extends StatefulWidget {
     this.minDateTime,
     this.maxDateTime,
     this.restrictedDates = const [],
+    this.markedDates = const [],
     this.weekLabels = const [
       'Sunday',
       'Monday',
@@ -96,6 +101,8 @@ class CreateDatePicker extends StatefulWidget {
     this.monthCellBuilder,
     this.yearCellBuilder,
     this.onViewStateChanged,
+    this.onSwipeLeftSelectedDate,
+    this.onSwipeRightSelectedDate,
     required this.onSelectedDateChanged,
   }) : assert(
          initialDate == null ||
@@ -141,6 +148,9 @@ class CreateDatePicker extends StatefulWidget {
 
   /// A list of dates that cannot be selected.
   final List<DateTime> restrictedDates;
+
+  /// A list of dates that should display the marker dot.
+  final List<DateTime> markedDates;
 
   /// Labels for the days of the week (e.g., Sunday, Monday).
   /// Must contain exactly 7 items.
@@ -248,6 +258,12 @@ class CreateDatePicker extends StatefulWidget {
   /// Callback triggered when the view state changes.
   final Function(ViewState viewState)? onViewStateChanged;
 
+  /// Callback triggered after swiping left in date view.
+  final Function(DateTime date)? onSwipeLeftSelectedDate;
+
+  /// Callback triggered after swiping right in date view.
+  final Function(DateTime date)? onSwipeRightSelectedDate;
+
   /// Callback triggered when the selected date changes.
   final Function(DateTime date) onSelectedDateChanged;
 
@@ -328,6 +344,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       } else {
         _selectedDate = widget.minDateTime!;
       }
+      widget.onSwipeLeftSelectedDate?.call(_selectedDate);
     } else if (_viewState == ViewState.month) {
       final newDate = DateTime(
         _selectedDate.year - 1,
@@ -376,6 +393,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       } else {
         _selectedDate = widget.maxDateTime!;
       }
+      widget.onSwipeRightSelectedDate?.call(_selectedDate);
     } else if (_viewState == ViewState.month) {
       final newDate = DateTime(
         _selectedDate.year + 1,
@@ -517,6 +535,14 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       return false;
     }
     return true;
+  }
+
+  bool _dateIsMarked(DateTime date) {
+    return widget.markedDates.any((markedDate) {
+      return date.year == markedDate.year &&
+          date.month == markedDate.month &&
+          date.day == markedDate.day;
+    });
   }
 
   bool _monthIsAvailable(DateTime date) {
@@ -825,6 +851,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
         cellDate.year == now.year &&
         cellDate.month == now.month &&
         cellDate.day == now.day;
+    final isMarked = _dateIsMarked(cellDate);
 
     if (widget.dateCellBuilder != null) {
       void selectDate() {
@@ -882,13 +909,11 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color:
-                      !isInTheCurrentMonth
+                      !isMarked || !isInTheCurrentMonth
                           ? Colors.transparent
-                          : (isSelected || isToday)
+                          : isSelected || isToday
                           ? Colors.white
-                          : isAvailable
-                          ? Colors.green
-                          : Colors.red,
+                          : Colors.green,
                 ),
               ),
             ],
