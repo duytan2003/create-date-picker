@@ -10,7 +10,6 @@ class Example0 extends StatelessWidget {
         Text('Default', style: TextStyle(fontSize: 16)),
         CreateDatePicker(
           width: 450,
-          elevation: 3,
           popupMenuOffset: Offset(20, 5),
           markedDates: [
             DateTime.now().add(Duration(days: 2)),

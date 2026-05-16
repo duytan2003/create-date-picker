@@ -308,21 +308,17 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
     }
 
     return Card(
-      margin: const EdgeInsets.all(20),
       color: Colors.white,
       elevation: widget.elevation,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            SizedBox(height: 20),
-            _buildWeekday(),
-            SizedBox(height: 10),
-            _buildDateMonthYear(_viewState),
-          ],
-        ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildHeader(),
+          SizedBox(height: 20),
+          _buildWeekday(),
+          SizedBox(height: 10),
+          _buildDateMonthYear(_viewState),
+        ],
       ),
     );
   }
@@ -759,7 +755,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
   // Default header builder
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -794,20 +790,14 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
 
             return Container(
               width: constraints.maxWidth / 7,
-              decoration:
-                  isToday
-                      ? BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.blueAccent,
-                      )
-                      : null,
+
               padding: widget.padding,
               child: Center(
                 child: Text(
                   day.substring(0, 2),
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
-                    color: isToday ? Colors.white : Colors.black,
+                    color: Colors.black,
                   ),
                 ),
               ),
@@ -823,6 +813,12 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
+      childAspectRatio:
+          view == ViewState.date
+              ? 1.2
+              : view == ViewState.month
+              ? 1.1
+              : 1,
       crossAxisCount:
           view == ViewState.date
               ? 7
