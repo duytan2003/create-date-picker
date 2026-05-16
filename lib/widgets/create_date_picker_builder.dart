@@ -102,6 +102,8 @@ class CreateDatePicker extends StatefulWidget {
     this.monthCellBuilder,
     this.yearCellBuilder,
     this.onViewStateChanged,
+    this.textStyle,
+    this.weekdayTextStyle,
     this.onSwipeLeftSelectedDate,
     this.onSwipeRightSelectedDate,
     required this.onSelectedDateChanged,
@@ -174,6 +176,10 @@ class CreateDatePicker extends StatefulWidget {
 
   /// Position of the popup menu (above or below the trigger).
   final PopupMenuPosition popupMenuPosition;
+
+  final TextStyle? textStyle;
+
+  final TextStyle? weekdayTextStyle;
 
   /// Custom builder for the entire picker. Here you can place all the component where ever you want, and to customize it use the builder for each component.
   final Function(
@@ -630,10 +636,9 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
                     : state == ViewState.month
                     ? 'Month'
                     : 'Year',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+                style:
+                    widget.weekdayTextStyle ??
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
             );
           }).toList();
@@ -648,10 +653,12 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
                     children: [
                       Text(
                         _formatDate(_selectedDate),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
+                        style:
+                            widget.textStyle ??
+                            const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                       ),
                       const SizedBox(width: 5),
                       const Icon(Icons.arrow_drop_down),

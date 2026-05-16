@@ -19,6 +19,7 @@ class Example0 extends StatelessWidget {
           onSwipeLeftSelectedDate: (date) {},
           onSwipeRightSelectedDate: (date) {},
           onSelectedDateChanged: (date) {},
+          textStyle: TextStyle(fontSize: 20, color: Colors.blue),
         ),
       ],
     );
