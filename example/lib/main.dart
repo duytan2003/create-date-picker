@@ -1,8 +1,6 @@
 import 'package:create_date_picker/create_date_picker.dart';
-import 'package:intl/intl.dart';
 import 'package:example/example_0.dart';
-import 'package:example/example_2.dart';
-import 'package:example/example_3.dart';
+import 'package:intl/intl.dart';
 
 void main() {
   runApp(const MyApp());

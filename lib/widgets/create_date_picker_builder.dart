@@ -288,7 +288,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
 
   late DateTime _selectedDate = widget.initialDate ?? DateTime.now();
 
-  final int _yearGridCount = 25;
+  final int _yearGridCount = 15;
 
   late List<int> _years = _generateYearList();
 
@@ -830,7 +830,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
           view == ViewState.date
               ? 1.2
               : view == ViewState.month
-              ? 1.1
+              ? 1.5
               : 1,
       crossAxisCount:
           view == ViewState.date
