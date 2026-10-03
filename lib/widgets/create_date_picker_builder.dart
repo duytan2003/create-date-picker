@@ -955,12 +955,8 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       0,
     );
     final previousMonthDays = List.generate(
-      startWeekday == 0 ? 6 : startWeekday - 1,
-      (index) =>
-          previousMonthLastDay.day -
-          (startWeekday == 0 ? 6 : startWeekday - 1) +
-          index +
-          1,
+      startWeekday,
+      (index) => previousMonthLastDay.day - startWeekday + index + 1,
     );
 
     final List<Widget> dateWidgets =
@@ -991,10 +987,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
     );
 
     final endWeekday = lastDayOfMonth.weekday % 7;
-    final nextMonthDays = List.generate(
-      endWeekday == 0 ? 0 : 7 - endWeekday,
-      (index) => index + 1,
-    );
+    final nextMonthDays = List.generate(6 - endWeekday, (index) => index + 1);
 
     dateWidgets.addAll(
       nextMonthDays.map((day) {
