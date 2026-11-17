@@ -61,6 +61,10 @@ class CreateDatePicker extends StatefulWidget {
     this.minDateTime,
     this.maxDateTime,
     this.restrictedDates = const [],
+    this.disabledWeekdays = const {},
+    this.disabledWeekdayOpacity = 0.4,
+    this.disabledDateCellBuilder,
+    this.selectTodayOnOpen = true,
     this.markedDates = const [],
     this.weekLabels = const [
       'Sunday',
@@ -128,12 +132,28 @@ class CreateDatePicker extends StatefulWidget {
          'initialDate cannot be included in restricted dates',
        ),
        assert(
-         !restrictedDates.any((restrictedDate) {
-           return DateTime.now().year == restrictedDate.year &&
-               DateTime.now().month == restrictedDate.month &&
-               DateTime.now().day == restrictedDate.day;
-         }),
-         'initialDate cannot be included in restricted dates',
+         initialDate == null || !disabledWeekdays.contains(initialDate.weekday),
+         'initialDate cannot fall on a weekday listed in disabledWeekdays',
+       ),
+       assert(
+         disabledWeekdays.every(
+           (weekday) => weekday >= DateTime.monday && weekday <= DateTime.sunday,
+         ),
+         'disabledWeekdays must only contain DateTime.monday ... DateTime.sunday',
+       ),
+       assert(
+         disabledWeekdays.length < 7,
+         'disabledWeekdays cannot contain every weekday',
+       ),
+       assert(
+         initialDate != null ||
+             disabledWeekdays.isNotEmpty ||
+             !restrictedDates.any((restrictedDate) {
+               return DateTime.now().year == restrictedDate.year &&
+                   DateTime.now().month == restrictedDate.month &&
+                   DateTime.now().day == restrictedDate.day;
+             }),
+         'today cannot be included in restricted dates when initialDate is null',
        ),
        assert((weekLabels.length == 7), 'weekLabels must contain 7 days'),
        assert((monthLabels.length == 12), 'monthLabels must contain 12 month');
@@ -152,6 +172,15 @@ class CreateDatePicker extends StatefulWidget {
 
   /// A list of dates that cannot be selected.
   final List<DateTime> restrictedDates;
+
+  final Set<int> disabledWeekdays;
+
+  final double disabledWeekdayOpacity;
+
+  final Function(DateTime date, bool isInTheCurrentMonth, bool isToday)?
+  disabledDateCellBuilder;
+
+  final bool selectTodayOnOpen;
 
   /// A list of dates that should display the marker dot.
   final List<DateTime> markedDates;
@@ -286,11 +315,46 @@ class CreateDatePicker extends StatefulWidget {
 class _CreateDatePickerState extends State<CreateDatePicker> {
   late ViewState _viewState = widget.initialViewState;
 
-  late DateTime _selectedDate = widget.initialDate ?? DateTime.now();
+  bool get _strict => widget.disabledWeekdays.isNotEmpty;
+
+  late DateTime? _committedDate = _strict ? _initialCommittedDate() : null;
+
+  late DateTime _selectedDate =
+      _committedDate ?? widget.initialDate ?? DateTime.now();
 
   final int _yearGridCount = 15;
 
   late List<int> _years = _generateYearList();
+
+  @override
+  void initState() {
+    super.initState();
+    if (_strict && widget.initialDate == null && _committedDate != null) {
+      final today = _committedDate!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _committedDate == today) {
+          widget.onSelectedDateChanged(today);
+        }
+      });
+    }
+  }
+
+  DateTime? _initialCommittedDate() {
+    if (widget.initialDate != null) {
+      return _snapToAvailable(widget.initialDate!);
+    }
+    if (widget.selectTodayOnOpen) {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      if (_dateIsAvailable(today)) return today;
+    }
+    return null;
+  }
+
+  void _commit(DateTime date) {
+    _selectedDate = date;
+    if (_strict) _committedDate = date;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -355,7 +419,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       } else {
         _selectedDate = widget.minDateTime!;
       }
-      widget.onSwipeLeftSelectedDate?.call(_selectedDate);
+      widget.onSwipeLeftSelectedDate?.call(_swipeCallbackDate());
     } else if (_viewState == ViewState.month) {
       final newDate = DateTime(
         _selectedDate.year - 1,
@@ -404,7 +468,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
       } else {
         _selectedDate = widget.maxDateTime!;
       }
-      widget.onSwipeRightSelectedDate?.call(_selectedDate);
+      widget.onSwipeRightSelectedDate?.call(_swipeCallbackDate());
     } else if (_viewState == ViewState.month) {
       final newDate = DateTime(
         _selectedDate.year + 1,
@@ -448,7 +512,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
   void _selectDate(int day) {
     final newDate = DateTime(_selectedDate.year, _selectedDate.month, day);
     if (_dateIsAvailable(newDate)) {
-      _selectedDate = newDate;
+      _commit(newDate);
       widget.onSelectedDateChanged(newDate);
       setState(() {});
     }
@@ -477,9 +541,11 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
             ? widget.minDateTime!
             : adjustedDate;
 
-    if (_monthIsAvailable(finalDate)) {
-      _selectedDate = finalDate;
-      widget.onSelectedDateChanged(finalDate);
+    final snappedDate = _snapToAvailable(finalDate);
+
+    if (_monthIsAvailable(snappedDate)) {
+      _commit(snappedDate);
+      widget.onSelectedDateChanged(snappedDate);
       setState(() {});
     }
   }
@@ -507,9 +573,11 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
             ? widget.minDateTime!
             : adjustedDate;
 
-    if (_yearIsAvailable(finalDate)) {
-      _selectedDate = finalDate;
-      widget.onSelectedDateChanged(finalDate);
+    final snappedDate = _snapToAvailable(finalDate);
+
+    if (_yearIsAvailable(snappedDate)) {
+      _commit(snappedDate);
+      widget.onSelectedDateChanged(snappedDate);
       setState(() {});
     }
   }
@@ -531,11 +599,41 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
     return date;
   }
 
+  bool _isDisabledWeekday(DateTime date) {
+    return widget.disabledWeekdays.contains(date.weekday);
+  }
+
+  DateTime _swipeCallbackDate() {
+    return _strict ? _snapToAvailable(_selectedDate) : _selectedDate;
+  }
+
+  DateTime _snapToAvailable(DateTime date) {
+    if (widget.disabledWeekdays.isEmpty || _dateIsAvailable(date)) {
+      return date;
+    }
+
+    for (final sameMonthOnly in [true, false]) {
+      for (var offset = 1; offset <= 31; offset++) {
+        for (final candidate in [
+          DateTime(date.year, date.month, date.day + offset),
+          DateTime(date.year, date.month, date.day - offset),
+        ]) {
+          if (sameMonthOnly && candidate.month != date.month) continue;
+          if (_dateIsAvailable(candidate)) return candidate;
+        }
+      }
+    }
+    return date;
+  }
+
   bool _dateIsAvailable(DateTime date) {
     if (widget.minDateTime != null && date.isBefore(widget.minDateTime!)) {
       return false;
     }
     if (widget.maxDateTime != null && date.isAfter(widget.maxDateTime!)) {
+      return false;
+    }
+    if (_isDisabledWeekday(date)) {
       return false;
     }
     if (widget.restrictedDates.any((restrictedDate) {
@@ -589,13 +687,29 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
   }
 
   String _formatDate(DateTime date) {
+    if (_strict) return '${widget.monthLabels[date.month - 1]} ${date.year}';
     return '${date.day} ${widget.monthLabels[date.month - 1]} ${date.year}';
   }
 
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
   bool _isSelectedDate(DateTime date) {
-    return date.year == _selectedDate.year &&
-        date.month == _selectedDate.month &&
-        date.day == _selectedDate.day;
+    final selected = _strict ? _committedDate : _selectedDate;
+    return selected != null && _isSameDay(date, selected);
+  }
+
+  bool _isSelectedMonth(int month) {
+    if (!_strict) return _selectedDate.month == month;
+    final committed = _committedDate;
+    return committed != null &&
+        committed.year == _selectedDate.year &&
+        committed.month == month;
+  }
+
+  bool _isSelectedYear(int year) {
+    return _strict ? _committedDate?.year == year : _selectedDate.year == year;
   }
 
   Widget _buildLeftArrow() {
@@ -793,28 +907,35 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
             final today = DateTime.now();
             final isToday = today.weekday % 7 == index;
             final day = widget.weekLabels[index];
+            final weekday = index == 0 ? DateTime.sunday : index;
+            final isDisabled = widget.disabledWeekdays.contains(weekday);
 
+            final Widget cell;
             if (widget.weekdayCellBuilder != null) {
-              return SizedBox(
+              cell = SizedBox(
                 width: constraints.maxWidth / 7,
                 child: widget.weekdayCellBuilder!(day, isToday),
               );
-            }
+            } else {
+              cell = Container(
+                width: constraints.maxWidth / 7,
 
-            return Container(
-              width: constraints.maxWidth / 7,
-
-              padding: widget.padding,
-              child: Center(
-                child: Text(
-                  day.substring(0, 2),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                padding: widget.padding,
+                child: Center(
+                  child: Text(
+                    day.substring(0, 2),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
-              ),
-            );
+              );
+            }
+
+            return isDisabled
+                ? Opacity(opacity: widget.disabledWeekdayOpacity, child: cell)
+                : cell;
           }),
         );
       },
@@ -858,6 +979,52 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
   }) {
     final cellDate =
         date ?? DateTime(_selectedDate.year, _selectedDate.month, day);
+
+    if (!_isDisabledWeekday(cellDate)) {
+      return _buildDateCellContent(
+        day,
+        isSelected: isSelected,
+        isInTheCurrentMonth: isInTheCurrentMonth,
+        isAvailable: isAvailable,
+        date: cellDate,
+      );
+    }
+
+    if (widget.disabledDateCellBuilder != null) {
+      final now = DateTime.now();
+      final isToday =
+          cellDate.year == now.year &&
+          cellDate.month == now.month &&
+          cellDate.day == now.day;
+      return widget.disabledDateCellBuilder!(
+        cellDate,
+        isInTheCurrentMonth,
+        isToday,
+      );
+    }
+
+    return Opacity(
+      opacity: widget.disabledWeekdayOpacity,
+      child: _buildDateCellContent(
+        day,
+        isSelected: isSelected,
+        isInTheCurrentMonth: isInTheCurrentMonth,
+        isAvailable: isAvailable,
+        date: cellDate,
+        isDisabledWeekday: true,
+      ),
+    );
+  }
+
+  Widget _buildDateCellContent(
+    int day, {
+    bool isSelected = false,
+    bool isInTheCurrentMonth = true,
+    bool isAvailable = true,
+    required DateTime date,
+    bool isDisabledWeekday = false,
+  }) {
+    final cellDate = date;
     final now = DateTime.now();
     final isToday =
         cellDate.year == now.year &&
@@ -909,7 +1076,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
                       isInTheCurrentMonth
                           ? ((isSelected || isToday)
                               ? Colors.white
-                              : isAvailable
+                              : (isAvailable || isDisabledWeekday)
                               ? Colors.black
                               : Colors.red)
                           : Colors.grey,
@@ -1044,7 +1211,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
 
   List<Widget> _buildMonthGrid() {
     return List.generate(12, (index) {
-      final isSelected = _selectedDate.month == index + 1;
+      final isSelected = _isSelectedMonth(index + 1);
       return _buildMonthCell(index, isSelected);
     });
   }
@@ -1086,7 +1253,7 @@ class _CreateDatePickerState extends State<CreateDatePicker> {
 
   List<Widget> _buildYearGrid() {
     return _years.map((year) {
-      final isSelected = _selectedDate.year == year;
+      final isSelected = _isSelectedYear(year);
       return _buildYearCell(year, isSelected);
     }).toList();
   }

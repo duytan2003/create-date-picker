@@ -55,6 +55,14 @@ NOTE: To place all the component together and anywhere, use `builder` property.
 
 - **`restrictedDates`**: A list of dates that cannot be selected.
 
+- **`disabledWeekdays`**: A set of weekdays that can never be selected, e.g. `{DateTime.sunday}`. Those cells (and the matching weekday label) are faded. Using it also makes the highlight always match the last date reported through `onSelectedDateChanged`: the month arrows only change the month being viewed, and nothing reported is ever a disabled weekday.
+
+- **`selectTodayOnOpen`**: With `disabledWeekdays` and no `initialDate`, highlights today on open and calls `onSelectedDateChanged` once with it (default `true`). If today is a disabled weekday nothing is highlighted.
+
+- **`disabledWeekdayOpacity`**: Opacity used to fade the disabled weekdays (default `0.4`).
+
+- **`disabledDateCellBuilder`**: Optional builder used only for cells on a disabled weekday. When omitted, the normal cell is faded instead.
+
 - **`weekLabels`**: Labels for the days of the week (e.g., Sunday, Monday). Must contain exactly 7 items.
 
 - **`monthLabels`**: Labels for the months of the year (e.g., January, February). Must contain exactly 12 items.

@@ -1,5 +1,5 @@
 import 'package:create_date_picker/create_date_picker.dart';
-import 'package:example/example_0.dart';
+import 'package:example/example_4.dart';
 import 'package:intl/intl.dart';
 
 void main() {
@@ -37,7 +37,8 @@ class App extends StatelessWidget {
           //   crossAxisAlignment: CrossAxisAlignment.start,
           //   children: [Example0(), Example1(), Example2(), Example3()],
           // ),
-          Example0(),
+          // Example0(),
+          Example4(), // disabledWeekdays (Sunday) demo
         ],
       ),
     );
