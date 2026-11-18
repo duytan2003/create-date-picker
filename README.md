@@ -7,6 +7,7 @@ The `CreateDatePicker` package enables you to create a fully customizable date p
 ## Table of Contents
 - [Integration Steps](#integration-steps)
 - [Available Parameters](#available-parameters-in-createdatepicker)
+- [CreateRangeDatePicker](#createrangedatepicker-timesheets-and-fromto-ranges)
 - [Upcoming Updates](#upcoming-updates)
 - [Contributing](#contributing)
 - [License](#license)
@@ -100,6 +101,29 @@ NOTE: To place all the component together and anywhere, use `builder` property.
 - **`onViewStateChanged`**: Callback triggered when the view state changes.
 
 - **`onSelectedDateChanged`**: Callback triggered when the selected date changes.
+
+## `CreateRangeDatePicker` (timesheets and from–to ranges)
+
+A separate widget, so the existing `CreateDatePicker` is not affected. It shows **one cycle at a time** (by default from the 26th of the previous month to the 25th of this month, titled by the month it ends in, e.g. "Tháng 11 · 2025"), starts the week on Monday, and lets the user tap a day to look at it or pick a from–to range of days.
+
+```dart
+final controller = CreateRangeDatePickerController();
+
+CreateRangeDatePicker(
+  controller: controller,
+  confirmedDates: confirmedDates,            // days already confirmed
+  initialRestWeekdays: {DateTime.sunday},    // what the app saved last time
+  onRestWeekdaysChanged: saveRestWeekdays,
+  onCycleChanged: (start, end) => loadDataFor(start, end),
+  onDateTap: showInfoOf,                     // single tap
+  onRangeChanged: (start, end, validDays) {},
+  onRangeCancelled: () {},
+  onRangeStartRejected: (date, reason) {},
+  dayCellBuilder: (context, info) => ..., // draw a day from the flags in `info`
+  builder: (context, parts) => ...,       // place title, arrows, grid, gear, ...
+)
+```
+
 
 ## Upcoming Updates
 Currently, the package is only for a single datetime picker. Support for multiple pickers will be coming soon.
