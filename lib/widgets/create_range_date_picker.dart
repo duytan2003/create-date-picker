@@ -1,5 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'range_picker_default_ui.dart';
+import 'range_picker_models.dart';
 
 DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -96,42 +101,6 @@ enum RangeStartRejectReason {
   notEarliest,
 }
 
-/// The texts the picker shows (as a message that slides up from the bottom
-/// for a few seconds) when the user presses a day that can not be used.
-@immutable
-class RangePickerMessages {
-  const RangePickerMessages({
-    this.confirmedDay =
-        'Ngày đã xác nhận - Vui lòng chọn ngày chưa xác nhận xa nhất để bắt đầu',
-    this.outsideCycle = 'Ngày ngoài kỳ - Không thể xác nhận',
-    this.notEarliest =
-        'Các ngày phải xác nhận liên tiếp, không được xen kẽ - Vui lòng chọn lại ngày',
-    this.futureDay = 'Ngày này chưa thể xác nhận - Vui lòng chọn ngày khác',
-  });
-
-  /// Long press on a day of the cycle that is already confirmed.
-  final String confirmedDay;
-
-  /// Long press on a day outside the cycle on screen.
-  final String outsideCycle;
-
-  /// Long press on a day of the cycle that is not the earliest unconfirmed one.
-  final String notEarliest;
-
-  /// Plain tap on a day of the cycle that has not come yet. (A long press on
-  /// such a day shows no message.)
-  final String futureDay;
-
-  /// The text for a refused start (a long press), or `null` when there is
-  /// none: a day that has not come is only announced on a plain tap.
-  String? forReason(RangeStartRejectReason reason) => switch (reason) {
-    RangeStartRejectReason.confirmed => confirmedDay,
-    RangeStartRejectReason.outsideCycle => outsideCycle,
-    RangeStartRejectReason.notEarliest => notEarliest,
-    RangeStartRejectReason.future => null,
-  };
-}
-
 /// The range the user has picked.
 @immutable
 class CreateRangeSelection {
@@ -177,7 +146,13 @@ class RangeDayCellInfo {
     this.isSkipped = false,
     this.isLocked = false,
     this.isNextCycleDay = false,
+    this.status,
   });
+
+  /// How the day was worked, for a confirmed day that came from the
+  /// `repository`; `null` for any other day (and when `confirmedDates` is
+  /// used instead of a repository).
+  final WorkStatus? status;
 
   /// The day (time of day is always midnight).
   final DateTime date;
@@ -247,7 +222,29 @@ class CreateRangeDatePickerParts {
     required this.selection,
     required this.viewedDate,
     required this.cancelRange,
+    required this.isLoading,
+    required this.isConfirming,
+    required this.canConfirm,
+    required this.confirm,
   });
+
+  /// The confirmed days of the cycle on screen are loading (by the repository,
+  /// or the `isLoading` the screen passed).
+  final bool isLoading;
+
+  /// A confirmation is on its way (to the repository, or the `isConfirming`
+  /// the screen passed).
+  final bool isConfirming;
+
+  /// Whether [confirm] would do something: there is a repository or an
+  /// `onConfirm`, a range with at least one valid day, and no confirmation on
+  /// its way.
+  final bool canConfirm;
+
+  /// Sends the valid days of the range to the repository (or to `onConfirm`).
+  /// Wire it to a custom "Xác nhận" button. Completes with `true` when it was
+  /// saved (handed over, with `onConfirm`).
+  final Future<bool> Function() confirm;
 
   /// The cycle being shown.
   final DatePickerCycle cycle;
@@ -291,12 +288,37 @@ class CreateRangeDatePickerParts {
   final void Function(int weekday, bool isRestDay) setRestWeekday;
 }
 
-/// Lets the screen read or cancel the range from outside the picker.
-class CreateRangeDatePickerController {
+/// Lets the screen read, cancel and confirm the range from outside the picker,
+/// for example from its own "Hủy" and "Xác nhận PCCT" buttons.
+///
+/// It tells its listeners (one frame later) whenever [hasRange], [selection],
+/// [canConfirm], [isLoading] or [isConfirming] changes, so a button can follow
+/// the range with a `ListenableBuilder`:
+///
+/// ```dart
+/// ListenableBuilder(
+///   listenable: controller,
+///   builder: (context, _) => FilledButton(
+///     onPressed: controller.canConfirm ? controller.confirm : null,
+///     child: const Text('Xác nhận PCCT'),
+///   ),
+/// )
+/// ```
+///
+/// Create it once, keep it in a `State` and call [dispose] when the screen is
+/// disposed.
+class CreateRangeDatePickerController extends ChangeNotifier {
   _CreateRangeDatePickerState? _state;
+
+  void _tell() => notifyListeners();
 
   /// Whether a range (with or without an end) is being picked.
   bool get hasRange => _state?._anchor != null;
+
+  /// Whether [confirm] would do something right now: there is a repository or
+  /// an `onConfirm`, a range with at least one valid day, and no confirmation
+  /// on its way.
+  bool get canConfirm => _state?._canConfirm ?? false;
 
   /// The range being picked, or `null`.
   CreateRangeSelection? get selection => _state?._selection();
@@ -304,6 +326,26 @@ class CreateRangeDatePickerController {
   /// Cancels the range and calls `onRangeCancelled`. Does nothing when there
   /// is no range.
   void cancelRange() => _state?._cancelRange();
+
+  /// Sends the valid days of the range to the repository (or to `onConfirm`),
+  /// like the "Xác nhận" button. Completes with `true` when they were saved
+  /// (with `onConfirm`: when they were handed over), `false` when there was
+  /// nothing to confirm or it failed.
+  Future<bool> confirm() => _state?._confirm() ?? Future.value(false);
+
+  /// Loads the confirmed days of the cycle on screen again.
+  ///
+  /// With `onVisibleRangeChanged` (no repository) it calls that callback again
+  /// for the cycle on screen.
+  Future<void> reload() => _state?._reload() ?? Future.value();
+
+  /// The confirmed days are loading (the repository, or the `isLoading` the
+  /// screen passed).
+  bool get isLoading => _state?._isLoading ?? false;
+
+  /// A confirmation is on its way (the repository, or the `isConfirming` the
+  /// screen passed).
+  bool get isConfirming => _state?._isConfirming ?? false;
 }
 
 /// A calendar for timesheets ("chấm công"): it shows one cycle at a time
@@ -317,8 +359,9 @@ class CreateRangeDatePickerController {
 ///   (plus the cycle right before it for [previousCycleGraceDays] days):
 ///   in any other cycle (an old one reached with the arrows) every long press
 ///   is "outside the cycle". Any other day is refused through
-///   [onRangeStartRejected], and a message tells the user why (see
-///   [showMessages], [messages] and [messageDuration]).
+///   [onRangeStartRejected] with the reason. The picker shows no message of
+///   its own: the app tells the user what it wants (see also
+///   [onFutureDayTap], [onLoadFailed] and [onConfirmFailed]).
 /// * Then tap a day after it: that is the end. Tap another day to change the
 ///   end. The end may be a rest day.
 /// * Rest days inside the range are skipped. Tap one to make it count, tap
@@ -337,13 +380,25 @@ class CreateRangeDatePicker extends StatefulWidget {
     super.key,
     this.cycleStartDay = 26,
     this.previousCycleGraceDays = 1,
+    this.repository,
+    this.onConfirmed,
+    this.confirmedDays,
+    this.isLoading = false,
+    this.isConfirming = false,
+    this.onVisibleRangeChanged,
+    this.onConfirm,
+    this.showActionBar,
+    this.theme = const RangePickerTheme(),
+    this.labels = const RangePickerLabels(),
+    this.persistRestWeekdays = true,
+    this.restWeekdaysKey = 'create_date_picker.rest_weekdays',
     this.controller,
     this.onRangeChanged,
     this.onRangeCancelled,
     this.onRangeStartRejected,
-    this.showMessages = true,
-    this.messages = const RangePickerMessages(),
-    this.messageDuration = const Duration(seconds: 5),
+    this.onFutureDayTap,
+    this.onLoadFailed,
+    this.onConfirmFailed,
     this.longPressDuration = const Duration(milliseconds: 500),
     this.initialDate,
     this.today,
@@ -386,6 +441,18 @@ class CreateRangeDatePicker extends StatefulWidget {
          previousCycleGraceDays >= 0,
          'previousCycleGraceDays can not be negative',
        ),
+       assert(
+         repository == null || confirmedDates.length < 1,
+         'Give either a repository or confirmedDates, not both',
+       ),
+       assert(
+         repository == null ||
+             (confirmedDays == null &&
+                 onVisibleRangeChanged == null &&
+                 onConfirm == null),
+         'Give either a repository or confirmedDays / onVisibleRangeChanged / '
+         'onConfirm, not both',
+       ),
        assert(weekdayLabels.length == 7, 'weekdayLabels needs 7 items'),
        assert(monthLabels.length == 12, 'monthLabels needs 12 items');
 
@@ -404,6 +471,73 @@ class CreateRangeDatePicker extends StatefulWidget {
   /// previous cycle from the first day.
   final int previousCycleGraceDays;
 
+  /// Where the data comes from. With a repository the picker does everything
+  /// itself: it loads the confirmed days of the cycle on screen (and again
+  /// after every change of cycle), draws the Onsite/Offsite dots, and sends
+  /// the valid days of the range to [TimesheetRepository.confirm] when the
+  /// user presses "Xác nhận PCCT". Give either a repository or
+  /// [confirmedDates], not both. Create the repository once and keep it (for
+  /// example in `initState`): a different instance makes the picker load
+  /// again.
+  final TimesheetRepository? repository;
+
+  /// Called after the repository saved a confirmation, with the saved days.
+  final ValueChanged<List<ConfirmedDay>>? onConfirmed;
+
+  /// The confirmed days (date + Onsite/Offsite) of the cycle on screen, for an
+  /// app that loads the data itself (a Bloc, a provider, ...): the picker only
+  /// draws what it is given. Pass the whole list again whenever it changes.
+  /// Together with [onVisibleRangeChanged] (to know what to load) and
+  /// [onConfirm] (to save). The range is cancelled when the set of days
+  /// changes, which is how a successful confirmation clears it. Not together
+  /// with a [repository].
+  final List<ConfirmedDay>? confirmedDays;
+
+  /// The app is loading the confirmed days: a thin line shows under the grid.
+  /// Used without a [repository]; with one the picker knows by itself.
+  final bool isLoading;
+
+  /// The app is saving a confirmation: the "Xác nhận PCCT" button shows a
+  /// spinner and can not be pressed. Used without a [repository].
+  final bool isConfirming;
+
+  /// Called when the picker opens and every time the cycle on screen changes,
+  /// with the dates to load: the cycle plus 6 days on each side (the grid shows
+  /// whole weeks). Ask your backend for the confirmed days of that window and
+  /// pass them back through [confirmedDays]. Not together with a [repository].
+  final void Function(DateTime from, DateTime to)? onVisibleRangeChanged;
+
+  /// Called when the user presses "Xác nhận PCCT" (or
+  /// `CreateRangeDatePickerController.confirm`), with the days that count
+  /// (rest days that were skipped are not in it). Save them, then pass the new
+  /// [confirmedDays]. The range stays until the days change, so a failed save
+  /// can be tried again. Not together with a [repository].
+  final ValueChanged<List<DateTime>>? onConfirm;
+
+  /// Whether the default layout draws the "Hủy" and "Xác nhận PCCT" buttons.
+  /// Default (`null`): drawn when there is a [repository] (the package does
+  /// everything), not drawn otherwise, so the screen draws its own buttons and
+  /// wires them to the [controller] (`cancelRange`, `confirm`, `canConfirm`,
+  /// `hasRange`). Pass `true` to get the ready-made buttons next to
+  /// [onConfirm]. Has no effect with a custom [builder] (use
+  /// `parts.cancelRange` and `parts.confirm`).
+  final bool? showActionBar;
+
+  /// The colours of the default look.
+  final RangePickerTheme theme;
+
+  /// The texts of the default look (Vietnamese by default).
+  final RangePickerLabels labels;
+
+  /// Whether the picker remembers the rest days on the device (with
+  /// `shared_preferences`) and restores them the next time it opens. The
+  /// stored choice wins over [initialRestWeekdays]. Default `true`.
+  final bool persistRestWeekdays;
+
+  /// The key the rest days are stored under. Change it when two pickers in one
+  /// app need different settings.
+  final String restWeekdaysKey;
+
   /// Reads or cancels the range from outside.
   final CreateRangeDatePickerController? controller;
 
@@ -417,21 +551,27 @@ class CreateRangeDatePicker extends StatefulWidget {
   /// Called when the range is cancelled, whatever the reason.
   final VoidCallback? onRangeCancelled;
 
-  /// Called when a long press can not start a range, with the reason.
+  /// Called when a long press can not start a range, with the reason. The
+  /// picker shows no message itself: the app decides what to tell the user
+  /// (a `SnackBar`, a dialog, nothing, ...) for each [RangeStartRejectReason].
   final void Function(DateTime date, RangeStartRejectReason reason)?
   onRangeStartRejected;
 
-  /// Whether the picker itself tells the user why a press was refused, with a
-  /// message that slides up from the bottom (a `SnackBar`, so it needs a
-  /// `Scaffold`/`MaterialApp` above the picker). Default `true`. Turn it off
-  /// to show your own message from [onRangeStartRejected].
-  final bool showMessages;
+  /// Called when the user taps (a plain tap, not a long press) a day of the
+  /// cycle on screen that has not come yet, which can not be used. Outside the
+  /// cycle a tap does nothing and is not reported.
+  final ValueChanged<DateTime>? onFutureDayTap;
 
-  /// The texts of those messages (Vietnamese by default).
-  final RangePickerMessages messages;
+  /// Called when the repository failed to load the confirmed days, with what
+  /// it threw. Only with a [repository]; with `onVisibleRangeChanged` the
+  /// screen does the loading and knows by itself. `controller.reload()` tries
+  /// again.
+  final ValueChanged<Object>? onLoadFailed;
 
-  /// How long a message stays. Default 5 seconds.
-  final Duration messageDuration;
+  /// Called when the repository failed to confirm the days, with what it
+  /// threw. The range is kept so the user can try again. Only with a
+  /// [repository].
+  final ValueChanged<Object>? onConfirmFailed;
 
   /// How long a day must be pressed to start a range. Default 0.5 s.
   final Duration longPressDuration;
@@ -485,8 +625,9 @@ class CreateRangeDatePicker extends StatefulWidget {
   /// Icon of the settings button (default: a small gear).
   final Widget? settingsIcon;
 
-  /// Places every part of the picker. When `null` a simple default layout is
-  /// used.
+  /// Places every part of the picker. When `null` the default layout is used:
+  /// header, weekdays, grid, the "› Hướng dẫn" row (legend and "Cài đặt lịch")
+  /// and, with a repository, the "Hủy" / "Xác nhận PCCT" buttons.
   final Widget Function(BuildContext context, CreateRangeDatePickerParts parts)?
   builder;
 
@@ -526,6 +667,20 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
   late Set<int> _confirmedKeys;
   DateTime? _viewed;
 
+  /// The confirmed days that came from the repository, with their status.
+  /// Keys are calendar days (`DateTime(y, m, d)`).
+  final Map<DateTime, WorkStatus> _statuses = {};
+
+  /// The repository is loading, or a confirmation is on its way.
+  bool _loading = false;
+  bool _confirming = false;
+
+  /// Every load gets a number; an answer that is no longer the newest is
+  /// dropped. `_dataVersion` changes when a confirmation was saved, so a load
+  /// that started before it is asked again instead of overwriting it.
+  int _loadGen = 0;
+  int _dataVersion = 0;
+
   // The range. `_anchor` is the day that was long-pressed (always the
   // earliest allowed start); everything else is derived from it.
   DateTime? _anchor;
@@ -555,6 +710,20 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     _restWeekdays = {...widget.initialRestWeekdays};
     _confirmedKeys = _keysOf(widget.confirmedDates);
     widget.controller?._state = this;
+    if (widget.repository != null) {
+      _loading = true;
+      _fetch();
+    } else {
+      _statuses.addAll(_statusMap(widget.confirmedDays));
+      if (widget.onVisibleRangeChanged != null) {
+        // The screen may start loading in this callback; wait for the first
+        // frame so nothing is rebuilt in the middle of this one.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _requestVisibleRange();
+        });
+      }
+    }
+    if (widget.persistRestWeekdays) _restoreRestWeekdays();
   }
 
   @override
@@ -566,11 +735,37 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
       }
       widget.controller?._state = this;
     }
+    if (oldWidget.repository != widget.repository) {
+      // Another source: ask it again (what is on screen stays until the
+      // answer comes, so there is no flicker). Create the repository once and
+      // keep it; a new instance on every build asks again on every build.
+      _dataVersion++;
+      if (widget.repository != null) {
+        _loading = true;
+        _fetch();
+      } else {
+        _statuses.clear();
+        _loading = false;
+      }
+    }
     final keys = _keysOf(widget.confirmedDates);
-    final changed =
+    var changed =
         keys.length != _confirmedKeys.length ||
         !keys.containsAll(_confirmedKeys);
     _confirmedKeys = keys;
+    if (widget.repository == null &&
+        (widget.confirmedDays != null || oldWidget.confirmedDays != null)) {
+      // The screen passed new data: draw it. Only a different set of days
+      // (not a different status) invalidates the range.
+      final next = _statusMap(widget.confirmedDays);
+      if (next.length != _statuses.length ||
+          !next.keys.every(_statuses.containsKey)) {
+        changed = true;
+      }
+      _statuses
+        ..clear()
+        ..addAll(next);
+    }
     if (changed && _anchor != null) {
       // The data the range was built on is gone. This runs while the parent is
       // building, so the callback has to wait for the frame to end.
@@ -595,7 +790,162 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
 
   bool _isRest(DateTime d) => _restWeekdays.contains(d.weekday);
 
-  bool _isConfirmed(DateTime d) => _confirmedKeys.contains(_keyOf(d));
+  bool _isConfirmed(DateTime d) =>
+      _confirmedKeys.contains(_keyOf(d)) || _statuses.containsKey(_dateOnly(d));
+
+  // ----------------------------------------------------------------- data
+
+  /// The data comes from the screen, not from a repository.
+  bool get _fromScreen => widget.repository == null;
+
+  /// Loading, from the repository or from the screen.
+  bool get _isLoading => _fromScreen ? widget.isLoading : _loading;
+
+  /// Confirming, with the repository or on the screen's side.
+  bool get _isConfirming => _fromScreen ? widget.isConfirming : _confirming;
+
+  Map<DateTime, WorkStatus> _statusMap(List<ConfirmedDay>? days) => {
+    for (final day in days ?? const <ConfirmedDay>[]) day.date: day.status,
+  };
+
+  /// Tells the screen which dates to load: the cycle plus 6 days on each side.
+  void _requestVisibleRange() {
+    widget.onVisibleRangeChanged?.call(
+      _addDays(_cycle.start, -6),
+      _addDays(_cycle.end, 6),
+    );
+  }
+
+  Future<void> _reload() {
+    if (widget.repository != null) return _fetch();
+    _requestVisibleRange();
+    return Future.value();
+  }
+
+  /// Loads the confirmed days of the cycle on screen from the repository: the
+  /// cycle plus 6 days on each side, because the grid shows whole weeks.
+  Future<void> _fetch() async {
+    final repo = widget.repository;
+    if (repo == null) return;
+    final from = _addDays(_cycle.start, -6);
+    final to = _addDays(_cycle.end, 6);
+    final gen = ++_loadGen;
+    final version = _dataVersion;
+    if (!_loading && mounted) setState(() => _loading = true);
+    List<ConfirmedDay> loaded;
+    try {
+      loaded = await repo.loadConfirmed(from, to);
+    } catch (error) {
+      if (!mounted || gen != _loadGen) return;
+      setState(() => _loading = false);
+      widget.onLoadFailed?.call(error);
+      return;
+    }
+    if (!mounted || gen != _loadGen) return; // a newer load took over
+    if (version != _dataVersion) return _fetch(); // confirmed meanwhile
+    final next = {..._statuses}
+      ..removeWhere((d, _) => !d.isBefore(from) && !d.isAfter(to));
+    for (final day in loaded) {
+      next[day.date] = day.status;
+    }
+    _applyStatuses(next);
+  }
+
+  /// Replaces the repository data. A range was built on the old data, so it is
+  /// cancelled when the set of confirmed days changed (or when [forceCancel]).
+  void _applyStatuses(
+    Map<DateTime, WorkStatus> next, {
+    bool forceCancel = false,
+  }) {
+    final changed =
+        next.length != _statuses.length ||
+        !next.keys.every(_statuses.containsKey);
+    final hadRange = _anchor != null;
+    final cancel = hadRange && (changed || forceCancel);
+    setState(() {
+      _statuses
+        ..clear()
+        ..addAll(next);
+      _loading = false;
+      if (cancel) _clearRange();
+    });
+    if (cancel) widget.onRangeCancelled?.call();
+  }
+
+  bool get _canConfirm {
+    if (widget.repository == null && widget.onConfirm == null) return false;
+    if (_isConfirming) return false;
+    final selection = _selection();
+    return selection != null && selection.validDays.isNotEmpty;
+  }
+
+  /// Sends the valid days to the repository (or to `onConfirm`). `true` when
+  /// they were saved (handed over, with `onConfirm`).
+  Future<bool> _confirm() async {
+    final repo = widget.repository;
+    if (!_canConfirm) return false;
+    final selection = _selection()!;
+    if (repo == null) {
+      widget.onConfirm!(selection.validDays);
+      return true;
+    }
+    setState(() => _confirming = true);
+    List<ConfirmedDay> saved;
+    try {
+      saved = await repo.confirm(selection.validDays);
+    } catch (error) {
+      if (!mounted) return false;
+      setState(() => _confirming = false);
+      widget.onConfirmFailed?.call(error);
+      return false;
+    }
+    if (!mounted) return false;
+    _dataVersion++;
+    final next = {..._statuses};
+    for (final day in saved) {
+      next[day.date] = day.status;
+    }
+    setState(() => _confirming = false);
+    _applyStatuses(next, forceCancel: true);
+    widget.onConfirmed?.call(saved);
+    return true;
+  }
+
+  // -------------------------------------------------------- rest weekdays
+
+  /// Puts back the rest days the user chose last time.
+  Future<void> _restoreRestWeekdays() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getStringList(widget.restWeekdaysKey);
+      if (stored == null || !mounted) return;
+      final restored = {
+        for (final s in stored)
+          if (int.tryParse(s) case final w? when w >= 1 && w <= 7) w,
+      };
+      if (setEquals(restored, _restWeekdays)) return;
+      final hadRange = _anchor != null;
+      setState(() {
+        _restWeekdays = restored;
+        if (hadRange) _clearRange();
+      });
+      if (hadRange) widget.onRangeCancelled?.call();
+    } catch (_) {
+      // No storage on this platform (or in a test): keep the default.
+    }
+  }
+
+  Future<void> _saveRestWeekdays() async {
+    if (!widget.persistRestWeekdays) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(widget.restWeekdaysKey, [
+        for (final w in _restWeekdays) '$w',
+      ]);
+    } catch (_) {
+      // Nothing to store into: the choice just is not remembered.
+    }
+  }
 
   bool _isFuture(DateTime d) => _keyOf(d) > _keyOf(_today);
 
@@ -708,6 +1058,7 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
       isLocked: inSpan && confirmed,
       isSkipped: inSpan && !confirmed && rest && !_counts(date),
       isNextCycleDay: key > _keyOf(_cycle.end),
+      status: _statuses[_dateOnly(date)],
     );
   }
 
@@ -719,7 +1070,13 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
       _clearRange();
       _cycle = cycle;
       _viewed = null;
+      if (widget.repository != null) _loading = true;
     });
+    if (widget.repository != null) {
+      _fetch();
+    } else {
+      _requestVisibleRange();
+    }
     if (hadRange) widget.onRangeCancelled?.call();
     widget.onCycleChanged?.call(cycle.start, cycle.end);
   }
@@ -775,23 +1132,12 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     return false;
   }
 
-  void _showMessage(String text) {
-    if (!widget.showMessages) return;
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(text), duration: widget.messageDuration),
-      );
-  }
-
-  void _onTap(DateTime date, {bool messageForFutureDay = true}) {
+  void _onTap(DateTime date, {bool reportFutureDay = true}) {
     final info = _infoFor(date);
     if (!info.isTappable) {
-      // A plain tap on a day of the cycle that has not come yet: say so.
-      if (messageForFutureDay && info.inCycle && info.isFuture) {
-        _showMessage(widget.messages.futureDay);
+      // A plain tap on a day of the cycle that has not come yet: tell the app.
+      if (reportFutureDay && info.inCycle && info.isFuture) {
+        widget.onFutureDayTap?.call(date);
       }
       return;
     }
@@ -871,9 +1217,9 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
 
   void _onLongPress(DateTime date) {
     if (_anchor != null) {
-      // Works like a tap, except that it does not announce a day that has not
-      // come: that message is for a plain tap only.
-      _onTap(date, messageForFutureDay: false);
+      // Works like a tap, except that it does not report a day that has not
+      // come: that is for a plain tap only.
+      _onTap(date, reportFutureDay: false);
       return;
     }
     final info = _infoFor(date);
@@ -892,8 +1238,6 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
       reason = RangeStartRejectReason.notEarliest;
     }
     if (reason != null) {
-      final text = widget.messages.forReason(reason);
-      if (text != null) _showMessage(text);
       widget.onRangeStartRejected?.call(date, reason);
       return;
     }
@@ -924,6 +1268,7 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     });
     if (hadRange) widget.onRangeCancelled?.call();
     widget.onRestWeekdaysChanged?.call(Set.unmodifiable(_restWeekdays));
+    _saveRestWeekdays();
   }
 
   // ---------------------------------------------------------------- parts
@@ -1051,64 +1396,8 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     );
   }
 
-  Widget _defaultDayCell(BuildContext context, RangeDayCellInfo info) {
-    final scheme = Theme.of(context).colorScheme;
-    final faded = !info.isTappable;
-    Color textColor = scheme.onSurface;
-    if (info.isRestDay) textColor = scheme.onSurface.withValues(alpha: 0.55);
-    if (info.isConfirmed) textColor = scheme.onSurface.withValues(alpha: 0.5);
-    if (info.isSkipped) textColor = scheme.onSurface.withValues(alpha: 0.35);
-
-    Color? fill;
-    if (info.isRangeStart) {
-      fill = const Color(0xFF1B5E20); // dark green
-      textColor = Colors.white;
-    } else if (info.isRangeEnd) {
-      fill = const Color(0xFF2E7D32);
-      textColor = Colors.white;
-    } else if (info.isLocked) {
-      fill = const Color(0xFFFFE0B2); // confirmed day inside the range
-    } else if (info.isInRange && !info.isSkipped) {
-      fill = const Color(0xFFDDF1E0);
-    }
-
-    return Center(
-      child: Opacity(
-        opacity: faded ? 0.35 : 1,
-        child: Container(
-          width: 36,
-          height: 36,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(8),
-            border:
-                info.isViewed
-                    ? Border.all(color: const Color(0xFF0F6B5C), width: 1)
-                    : null,
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Text(
-                '${info.date.day}',
-                style: TextStyle(
-                  color: textColor,
-                  fontWeight: info.isToday ? FontWeight.w800 : FontWeight.w400,
-                ),
-              ),
-              if (info.isConfirmed)
-                Positioned(
-                  right: 3,
-                  top: 3,
-                  child: Icon(Icons.check, size: 9, color: textColor),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _defaultDayCell(BuildContext context, RangeDayCellInfo info) =>
+      RangePickerDayCell(info: info, theme: widget.theme);
 
   Widget _buildSettingsButton(BuildContext context) {
     return PopupMenuButton<void>(
@@ -1181,18 +1470,54 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     );
   }
 
+  // ----------------------------------------------------- controller notices
+
+  /// What the controller's listeners can see, as one number.
+  int? _noticeKey;
+
+  /// Tells the controller's listeners after this frame when something they can
+  /// read has changed. Doing it from `build` covers every way the range or the
+  /// flags can change, and waiting for the end of the frame keeps a listener
+  /// from rebuilding in the middle of one.
+  void _scheduleControllerNotice() {
+    final controller = widget.controller;
+    if (controller == null) return;
+    final selection = _selection();
+    final key = Object.hash(
+      _anchor != null,
+      _canConfirm,
+      _isLoading,
+      _isConfirming,
+      selection?.start,
+      selection?.end,
+      Object.hashAll(selection?.validDays ?? const <DateTime>[]),
+    );
+    if (key == _noticeKey) return;
+    final first = _noticeKey == null;
+    _noticeKey = key;
+    if (first) return; // nobody has seen an earlier value
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.controller == controller) controller._tell();
+    });
+  }
+
   // ---------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
     _effectiveStart = _computeEffectiveStart();
     _effectiveEnd = _computeEffectiveEnd();
+    _scheduleControllerNotice();
     final parts = CreateRangeDatePickerParts(
       selection: _selection(),
       viewedDate: _viewed,
       cancelRange: _cancelRange,
       restWeekdays: Set.unmodifiable(_restWeekdays),
       setRestWeekday: _setRestWeekday,
+      isLoading: _isLoading,
+      isConfirming: _isConfirming,
+      canConfirm: _canConfirm,
+      confirm: _confirm,
       cycle: _cycle,
       title: _buildTitle(context),
       leftArrow: _buildArrow(
@@ -1213,22 +1538,58 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     final body =
         widget.builder != null
             ? widget.builder!(context, parts)
-            : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    parts.leftArrow,
-                    Expanded(child: Center(child: parts.title)),
-                    parts.rightArrow,
-                    parts.settingsButton,
-                  ],
-                ),
-                parts.weekdayRow,
-                parts.grid,
-              ],
-            );
+            : _defaultLayout(parts);
 
     return SizedBox(width: widget.width, child: body);
+  }
+
+  /// The layout used when no `builder` is given.
+  Widget _defaultLayout(CreateRangeDatePickerParts parts) {
+    final showActions = widget.showActionBar ?? widget.repository != null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            parts.leftArrow,
+            Expanded(child: Center(child: parts.title)),
+            parts.rightArrow,
+          ],
+        ),
+        parts.weekdayRow,
+        parts.grid,
+        // A thin line while the repository loads (the space is kept so the
+        // layout does not jump).
+        SizedBox(
+          height: 2,
+          child:
+              parts.isLoading
+                  ? LinearProgressIndicator(
+                    key: const ValueKey('rdp-loading'),
+                    color: widget.theme.ringColor,
+                    backgroundColor: Colors.transparent,
+                  )
+                  : null,
+        ),
+        RangePickerGuideSection(
+          restWeekdays: parts.restWeekdays,
+          setRestWeekday: parts.setRestWeekday,
+          theme: widget.theme,
+          labels: widget.labels,
+        ),
+        if (showActions)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: RangePickerActionBar(
+              onCancel: parts.selection != null ? parts.cancelRange : null,
+              onConfirm: parts.canConfirm ? () => parts.confirm() : null,
+              isConfirming: parts.isConfirming,
+              theme: widget.theme,
+              labels: widget.labels,
+            ),
+          ),
+      ],
+    );
   }
 }
