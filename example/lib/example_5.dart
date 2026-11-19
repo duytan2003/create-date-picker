@@ -80,10 +80,10 @@ class _Example5State extends State<Example5> {
     }
   }
 
-  Future<void> _confirm(List<DateTime> days) async {
+  Future<void> _confirm(List<ConfirmedDay> days) async {
     _showLoading();
     try {
-      await _api.save(days, _status);
+      await _api.save(days);
     } catch (_) {
       _hideLoading();
       _say('Xác nhận không thành công - Vui lòng thử lại');
@@ -149,6 +149,7 @@ class _Example5State extends State<Example5> {
                   controller: _controller,
                   confirmedDays: _attendances,
                   onVisibleRangeChanged: _reload,
+                  statusForConfirm: () => _status,
                   onConfirm: _confirm,
                   onRangeStartRejected: _onRejected,
                   onFutureDayTap: _onFutureDayTap,
@@ -228,10 +229,10 @@ class _FakeApi {
     ];
   }
 
-  Future<void> save(List<DateTime> days, WorkStatus status) async {
+  Future<void> save(List<ConfirmedDay> days) async {
     await Future<void>.delayed(_latency);
     for (final d in days) {
-      _days[DateTime(d.year, d.month, d.day)] = status;
+      _days[d.date] = d.status;
     }
   }
 }

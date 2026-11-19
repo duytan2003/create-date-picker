@@ -387,6 +387,7 @@ class CreateRangeDatePicker extends StatefulWidget {
     this.isConfirming = false,
     this.onVisibleRangeChanged,
     this.onConfirm,
+    this.statusForConfirm,
     this.showActionBar,
     this.theme = const RangePickerTheme(),
     this.labels = const RangePickerLabels(),
@@ -453,6 +454,10 @@ class CreateRangeDatePicker extends StatefulWidget {
          'Give either a repository or confirmedDays / onVisibleRangeChanged / '
          'onConfirm, not both',
        ),
+       assert(
+         onConfirm == null || statusForConfirm != null,
+         'onConfirm needs statusForConfirm to say the status of the days',
+       ),
        assert(weekdayLabels.length == 7, 'weekdayLabels needs 7 items'),
        assert(monthLabels.length == 12, 'monthLabels needs 12 items');
 
@@ -509,10 +514,19 @@ class CreateRangeDatePicker extends StatefulWidget {
 
   /// Called when the user presses "Xác nhận PCCT" (or
   /// `CreateRangeDatePickerController.confirm`), with the days that count
-  /// (rest days that were skipped are not in it). Save them, then pass the new
+  /// (rest days that were skipped are not in it), each one with the status
+  /// [statusForConfirm] gave: the same shape as [confirmedDays], so what you
+  /// send and what you load are the same list. Save them, then pass the new
   /// [confirmedDays]. The range stays until the days change, so a failed save
-  /// can be tried again. Not together with a [repository].
-  final ValueChanged<List<DateTime>>? onConfirm;
+  /// can be tried again. Needs [statusForConfirm]. Not together with a
+  /// [repository].
+  final ValueChanged<List<ConfirmedDay>>? onConfirm;
+
+  /// The status (Onsite / Offsite) the app has chosen right now, asked once
+  /// when the user confirms: every day sent to [onConfirm] gets it. The choice
+  /// itself is drawn by the app, not by the picker. Required with
+  /// [onConfirm].
+  final WorkStatus Function()? statusForConfirm;
 
   /// Whether the default layout draws the "Hủy" and "Xác nhận PCCT" buttons.
   /// Default (`null`): drawn when there is a [repository] (the package does
@@ -886,7 +900,10 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     if (!_canConfirm) return false;
     final selection = _selection()!;
     if (repo == null) {
-      widget.onConfirm!(selection.validDays);
+      final status = widget.statusForConfirm!();
+      widget.onConfirm!([
+        for (final day in selection.validDays) ConfirmedDay(day, status),
+      ]);
       return true;
     }
     setState(() => _confirming = true);
