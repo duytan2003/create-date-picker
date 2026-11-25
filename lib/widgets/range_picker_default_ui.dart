@@ -229,27 +229,27 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
       onTap: () => widget.setRestWeekday(weekday, !checked),
       borderRadius: BorderRadius.circular(6),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           children: [
             Container(
-              width: 22,
-              height: 22,
+              width: 16,
+              height: 16,
               decoration: BoxDecoration(
                 color: checked ? _t.ringColor : Colors.white,
-                borderRadius: BorderRadius.circular(5),
+                borderRadius: BorderRadius.circular(4),
                 border: Border.all(
                   color: checked ? _t.ringColor : const Color(0xFFB8C0CC),
-                  width: 1.5,
+                  width: 1.2,
                 ),
               ),
               child:
                   checked
-                      ? const Icon(Icons.check, size: 16, color: Colors.white)
+                      ? const Icon(Icons.check, size: 12, color: Colors.white)
                       : null,
             ),
-            const SizedBox(width: 12),
-            Flexible(child: Text(label, style: const TextStyle(fontSize: 16))),
+            const SizedBox(width: 8),
+            Flexible(child: Text(label, style: const TextStyle(fontSize: 12))),
           ],
         ),
       ),
@@ -259,10 +259,10 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
   Widget _settingsCard() => Container(
     width: double.infinity,
     margin: const EdgeInsets.only(bottom: 4),
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+    padding: const EdgeInsets.fromLTRB(12, 8, 12, 5),
     decoration: BoxDecoration(
       color: _t.cardFill,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(10),
       border: Border.all(color: _t.cardBorder),
     ),
     child: Column(
@@ -270,9 +270,9 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
       children: [
         Text(
           _l.settings,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 3),
         _restRow(DateTime.saturday, _l.saturdayRest),
         _restRow(DateTime.sunday, _l.sundayRest),
       ],
@@ -286,7 +286,7 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Divider(height: 16, thickness: 1, color: _t.dividerColor),
+        Divider(height: 8, thickness: 1, color: _t.dividerColor),
         Row(
           children: [
             Flexible(
@@ -298,7 +298,7 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 6,
+                      // vertical: 2,
                       horizontal: 2,
                     ),
                     child: Row(
@@ -309,7 +309,7 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
                           duration: const Duration(milliseconds: 150),
                           child: Icon(
                             Icons.chevron_right,
-                            size: 22,
+                            size: 14,
                             color: _t.guideColor,
                           ),
                         ),
@@ -318,7 +318,7 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
                           child: Text(
                             _l.guide,
                             style: TextStyle(
-                              fontSize: 17,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: _t.guideColor,
                             ),
@@ -334,6 +334,8 @@ class _RangePickerGuideSectionState extends State<RangePickerGuideSection> {
               key: const ValueKey('rdp-guide-settings'),
               tooltip: _l.settings,
               onPressed: () => _toggle(_Panel.settings),
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
               icon: Icon(Icons.settings_outlined, color: _t.guideColor),
             ),
           ],

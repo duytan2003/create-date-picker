@@ -1296,7 +1296,7 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
     }
     return Text(
       '${widget.monthLabels[_cycle.month - 1]} · ${_cycle.year}',
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
     );
   }
 
@@ -1338,7 +1338,7 @@ class _CreateRangeDatePickerState extends State<CreateRangeDatePicker> {
           opacity: isRest ? 0.4 : 1,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           ),
         ),
       ),
